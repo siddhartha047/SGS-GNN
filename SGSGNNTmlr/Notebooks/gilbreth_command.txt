@@ -1,0 +1,10 @@
+New Gilbreth command
+
+conda init bash
+source ~/.bashrc
+
+
+conda activate /home/das90/.conda/envs/cent7/2020.11-py38/py311cu117pyg200
+export PATH=/home/das90/.conda/envs/cent7/2020.11-py38/py311cu117pyg200/bin:$PATH
+
+cd /home/das90/GNNcodes/CVE2020/GNN-NC/Graph-Sparsification/SupervisedSparsification/Notebooks/

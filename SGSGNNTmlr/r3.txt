@@ -1,0 +1,62 @@
+Current date and time: Wed Apr  2 01:37:33 PM EDT 2025
+learned
+---------Cora--------------
+------GNN----GCN------
+----EdgeGNN---MLP------
+Cora
+CoraFull()
+Data(x=[19793, 8710], edge_index=[2, 126842], y=[19793])
+Graph has fewer than 500000 nodes; don't do graph partition
+Run: 0
+Mean epoch time of run 0.2366
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6518
+Loading best model for final evaluation at val: 0.6500
+----EdgeGNN---GSAGE------
+Cora
+CoraFull()
+Data(x=[19793, 8710], edge_index=[2, 126842], y=[19793])
+Graph has fewer than 500000 nodes; don't do graph partition
+Run: 0
+Mean epoch time of run 0.0829
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6474
+Loading best model for final evaluation at val: 0.6451
+---------end--------------
+---------johnshopkins55--------------
+------GNN----GCN------
+----EdgeGNN---MLP------
+johnshopkins55
+Graph has fewer than 500000 nodes; don't do graph partition
+Run: 0
+Mean epoch time of run 0.2335
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6815
+Loading best model for final evaluation at val: 0.6959
+Best Test F1 after loading saved model: 0.6728
+Run: 1
+Mean epoch time of run 0.2305
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6844
+Loading best model for final evaluation at val: 0.7075
+----EdgeGNN---GSAGE------
+johnshopkins55
+Graph has fewer than 500000 nodes; don't do graph partition
+Run: 0
+Mean epoch time of run 0.0788
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6786
+Loading best model for final evaluation at val: 0.7104
+Best Test F1 after loading saved model: 0.6747
+Run: 1
+Mean epoch time of run 0.0762
+Iteration:  150
+EdgeMLP updated 150/150
+Best Test F1 throughout: 0.6757
+Loading best model for final evaluation at val: 0.6921
+---------end--------------
