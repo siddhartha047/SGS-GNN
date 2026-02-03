@@ -2,6 +2,7 @@
 
 The followings are for Gilbreth command
 
+```bash
 conda init bash
 source ~/.bashrc
 
@@ -12,7 +13,7 @@ export PATH=/home/das90/.conda/envs/cent7/2020.11-py38/py311cu117pyg200/bin:$PAT
 cd GNNcodes/CVE2020/GNN-NC/Graph-Sparsification/SupervisedSparsification/SGSGNNTmlr/
 
 python main.py --dataset SmallCora --mode learned --runs 1 --epochs 250 --save_csv True --edge_mlp_type GCN --GNN GCN --log True --sparse_edge_mlp True --conditional True --reg1 True --reg2 True
-
+```
 
 ## Demo run
 
