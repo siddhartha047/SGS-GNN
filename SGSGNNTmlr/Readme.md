@@ -55,3 +55,102 @@ run_pipeline "two_pass"
 run_pipeline "straight_through"
 run_pipeline "hybrid"
 ```
+
+# Mermaid diagram
+
+Below are corrected, syntax‑valid Mermaid diagrams for the three pipelines. I used solid arrows for forward pass and dashed arrows for backward/grad flow. I also annotated the key differences (straight‑through vs detach vs two‑pass recompute).
+
+**Straight‑Through**
+
+```mermaid
+flowchart LR
+  X["batch.x"] --> E["EdgeProbMLP (grad)"]
+  EI["batch.edge_index"] --> E
+  E --> P["edge_probs_full"]
+
+  P --> GS["gumbel_softmax_sampling (straight-through)"]
+  EI --> GS
+  GS --> SEI["sampled_edge_index"]
+  GS --> SEW["sampled_edge_weight (straight-through)"]
+
+  X --> G["GNN"]
+  SEI --> G
+  SEW --> G
+
+  G --> L["loss"]
+  SEW --> R1["reg1 BCE"]
+  SEI --> R1
+  G --> R2["reg2 consistency"]
+  SEW --> R2
+  R1 --> L
+  R2 --> L
+
+  L -.-> G
+  L -.-> E
+  L -.-> GS
+  GS -.-> P
+```
+
+**Hybrid**
+
+```mermaid
+flowchart LR
+  X["batch.x"] --> E["EdgeProbMLP (grad, optional checkpoint)"]
+  EI["batch.edge_index"] --> E
+  E --> P["edge_probs_full"]
+
+  P -->|"detach"| GS["gumbel_softmax_sampling"]
+  EI --> GS
+  GS --> SEI["sampled_edge_index"]
+
+  P --> IDX["index_select by sampled_edge_index"]
+  IDX --> SEW["edge_probs_sampled"]
+
+  X --> G["GNN"]
+  SEI --> G
+  SEW --> G
+
+  G --> L["loss"]
+  SEW --> R1["reg1 BCE"]
+  SEI --> R1
+  G --> R2["reg2 consistency"]
+  SEW --> R2
+  R1 --> L
+  R2 --> L
+
+  L -.-> G
+  L -.-> E
+  L -.-> IDX
+```
+
+**Two‑Pass**
+
+```mermaid
+flowchart LR
+  X["batch.x"] --> E1["EdgeProbMLP pass1 (no grad)"]
+  EI["batch.edge_index"] --> E1
+  E1 --> P["edge_probs_full (detached)"]
+
+  P --> GS["gumbel_softmax_sampling"]
+  EI --> GS
+  GS --> SEI["sampled_edge_index"]
+
+  X --> E2["EdgeProbMLP pass2 (grad, sampled only)"]
+  SEI --> E2
+  E2 --> SEW["edge_probs_sampled"]
+
+  X --> G["GNN"]
+  SEI --> G
+  SEW --> G
+
+  G --> L["loss"]
+  SEW --> R1["reg1 BCE"]
+  SEI --> R1
+  G --> R2["reg2 consistency"]
+  SEW --> R2
+  R1 --> L
+  R2 --> L
+
+  L -.-> G
+  L -.-> E2
+```
