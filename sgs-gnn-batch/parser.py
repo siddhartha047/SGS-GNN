@@ -56,6 +56,7 @@ datasets = ['Cornell',
 
 GNNs = ['GCN','GIN','GAT','Cheb']
 EDGE_MLPs= ['MLP','GSAGE','GCN']
+IMPLEMENTATIONS = ['github', 'sparse_backward']
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -95,5 +96,22 @@ def parse_args():
     parser.add_argument('--degree',type=int,default = 100)
     parser.add_argument('--train',type=float,default = 0.2)
     parser.add_argument('--hn',type=float,default = 0.1) #nodehomophily
+    parser.add_argument(
+        '--pipeline',
+        type=str,
+        default='two_pass',
+        choices=['two_pass', 'straight_through', 'hybrid'],
+        help='edge sampling pipeline: two_pass (default), straight_through, or hybrid'
+    )
+    parser.add_argument('--gpu_profile', type=str2bool, nargs='?', const=True, default=False, help='profile GPU memory by segment')
+    parser.add_argument('--stats', type=str2bool, nargs='?', const=True, default=False, help='report runtime and GPU memory stats')
+    parser.add_argument('--hybrid_checkpoint', type=str2bool, nargs='?', const=True, default=False, help='use gradient checkpointing in hybrid pipeline to save memory')
+    parser.add_argument(
+        '--implementation',
+        type=str,
+        default='github',
+        choices=IMPLEMENTATIONS,
+        help='implementation variant: github matches the upstream repository, sparse_backward enables the local experimental hybrid path'
+    )
 
     return parser.parse_known_args()

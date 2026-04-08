@@ -10,6 +10,75 @@ from torch_geometric.utils import to_networkx
 from torch_geometric.data import Data
 from sampling import * 
 
+class GpuMemoryProfiler:
+    def __init__(self, enabled=False, device=None):
+        self.device = torch.device(device) if device is not None else torch.device("cuda")
+        self.enabled = bool(enabled) and torch.cuda.is_available() and self.device.type == "cuda"
+        self._epoch = None
+        self._stats = {}
+        self._active = {}
+
+    def start_epoch(self, epoch):
+        if not self.enabled:
+            return
+        self._epoch = epoch
+        self._stats.setdefault(epoch, {})
+
+    def begin(self, name):
+        if not self.enabled or self._epoch is None:
+            return
+        torch.cuda.synchronize(self.device)
+        start_peak = torch.cuda.max_memory_allocated(self.device)
+        start_alloc = torch.cuda.memory_allocated(self.device)
+        self._active[name] = (start_peak, start_alloc)
+
+    def end(self, name):
+        if not self.enabled or self._epoch is None:
+            return 0, 0
+        start = self._active.pop(name, None)
+        if start is None:
+            return 0, 0
+        torch.cuda.synchronize(self.device)
+        end_peak = torch.cuda.max_memory_allocated(self.device)
+        end_alloc = torch.cuda.memory_allocated(self.device)
+        peak_inc = max(0, end_peak - start[0])
+        alloc_inc = end_alloc - start[1]
+        self._stats.setdefault(self._epoch, {}).setdefault(name, []).append(
+            (peak_inc, end_alloc, alloc_inc)
+        )
+        return peak_inc, end_alloc
+
+    def summarize_epoch(self, epoch):
+        if not self.enabled:
+            return {}
+        epoch_stats = self._stats.get(epoch, {})
+        summary = {}
+        for name, rows in epoch_stats.items():
+            if not rows:
+                continue
+            peak_incs = [r[0] for r in rows]
+            end_allocs = [r[1] for r in rows]
+            alloc_incs = [r[2] for r in rows]
+            summary[name] = {
+                "max_peak_inc_bytes": max(peak_incs),
+                "max_peak_inc_mb": max(peak_incs) / (1024 ** 2),
+                "mean_peak_inc_mb": (sum(peak_incs) / len(peak_incs)) / (1024 ** 2),
+                "max_alloc_after_bytes": max(end_allocs),
+                "max_alloc_after_mb": max(end_allocs) / (1024 ** 2),
+                "mean_alloc_after_mb": (sum(end_allocs) / len(end_allocs)) / (1024 ** 2),
+                "max_alloc_inc_bytes": max(alloc_incs),
+                "max_alloc_inc_mb": max(alloc_incs) / (1024 ** 2),
+                "mean_alloc_inc_mb": (sum(alloc_incs) / len(alloc_incs)) / (1024 ** 2),
+                "calls": len(rows),
+            }
+        return summary
+
+    def end_epoch(self):
+        if not self.enabled:
+            return
+        self._epoch = None
+        self._active.clear()
+
 def fix_seeds(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -94,7 +163,12 @@ def plot_hist(edge_probs,sampling_probs, ep_select, sp_select):
 def calculate_f1(logits, labels, mask):
     preds = logits[mask].argmax(dim=1)
     f1 = f1_score(labels[mask].cpu(), preds.cpu(), average='micro')
+    # f1 = f1_score(labels[mask].cpu(), preds.cpu(), average='macro')
+    # f1 = f1_score(labels[mask].cpu(), preds.cpu(), average='weighted')
+    
     return f1
+
+
 
 # def compute_node_similarity(node_embeddings):
 #     """
@@ -133,7 +207,7 @@ def consistency_loss(edge_probs, edge_indices, node_embeddings):
     edge_similarities = F.cosine_similarity(src_embeddings, dst_embeddings, dim=-1)
     
     # Consistency loss as MSE between edge probabilities and node similarities
-    loss = F.mse_loss(edge_probs[src], edge_similarities)
+    loss = F.mse_loss(edge_probs, edge_similarities)
     return loss
 
 def plot_full_graph_with_train_nodes(DATASET_NAME, data, train_mask, ax=None):

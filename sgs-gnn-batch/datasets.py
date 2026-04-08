@@ -8,7 +8,7 @@ from ogb.nodeproppred import PygNodePropPredDataset
 from sklearn.model_selection import train_test_split
 from torch_geometric.typing import SparseTensor
 from torch_geometric.utils import to_scipy_sparse_matrix, homophily
-from DeviceDir import get_device, get_directory
+from Notebooks.DeviceDir import get_device, get_directory
 from torch_geometric.utils import to_undirected
 from ipynb.fs.full.EffectiveResistanceWeights import EffectiveRessistance
 import os

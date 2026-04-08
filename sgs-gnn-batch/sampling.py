@@ -89,28 +89,11 @@ import torch
 #     #return indexs, torch.clamp(edge_probs[indexs]+10, max=1.0)
 
 def gumbel_softmax_sampling(batch, edge_probs, edge_index, q=500, temperature=1.0, degree_bias_coef = 0.3, log=False, istest=False, epoch=-1):
-        
-    if istest:
-        # samples = torch.exp(edge_probs)/torch.exp(edge_probs).sum()
-        samples = edge_probs/edge_probs.sum()
-        # samples = F.softmax(edge_probs/temperature, dim=-1)
-        #top_k_values, sampled_edges = torch.topk(edge_probs, q, dim=-1, largest=True, sorted=True)
-        sampled_edges = torch.multinomial(samples, q, replacement=False) #nothing
-        # edge_gradients = edge_probs.grad
-        # sampled_edges = torch.topk(edge_gradients.abs(),k=q)
-    else:
-        # warmup_epochs = 20  # Number of epochs for the warm-up phase
-        # if epoch< warmup_epochs:
-            # samples = F.softmax(batch.prob, dim=-1)
-            # sampled_edges = torch.multinomial(samples, q, replacement=False) #nothing               
-        # else:
-        # samples = torch.exp(edge_probs)/torch.exp(edge_probs).sum()
-        # edge_probs += torch.ones_like(edge_probs)/len(edge_probs)
-        samples =  edge_probs/edge_probs.sum()
-        # samples = F.softmax(edge_probs/temperature, dim=-1)
-        # samples = 0.1*samples + 0.9*torch.rand_like(samples)
-        samples = (1-degree_bias_coef) * samples + degree_bias_coef *batch.prob
-        sampled_edges = torch.multinomial(samples, q, replacement=False) #nothing
+    eps = 1e-12
+    samples = edge_probs / (edge_probs.sum() + eps)
+    if not istest:
+        samples = (1 - degree_bias_coef) * samples + degree_bias_coef * batch.prob
+    sampled_edges = torch.multinomial(samples, q, replacement=False)
 #         gumbels = -torch.empty_like(edge_probs).exponential_().log()
 #         gumbels = (gumbels - gumbels.min()) / (gumbels.max() - gumbels.min())
         
@@ -149,12 +132,11 @@ def gumbel_softmax_sampling(batch, edge_probs, edge_index, q=500, temperature=1.
 
     
     one_hot = torch.zeros_like(samples)
-    one_hot.scatter_(0, sampled_edges, 1.0)     
-    
-    indexs = (one_hot - samples).detach() + samples
-    
-    edge_probs = edge_probs*indexs
-    indexs = indexs.bool()
+    one_hot.scatter_(0, sampled_edges, 1.0)
+
+    straight_through = (one_hot - samples).detach() + samples
+    edge_probs = edge_probs * straight_through
+    indexs = one_hot.bool()
     
     
 #     if log:        
@@ -170,8 +152,7 @@ def gumbel_softmax_sampling(batch, edge_probs, edge_index, q=500, temperature=1.
     
 #     return indexs, edge_probs[indexs]
     
-    return indexs, edge_probs[indexs]+0.01
-    #return indexs, torch.clamp(edge_probs[indexs]+10, max=1.0)
+    return indexs, edge_probs[indexs].clamp(0.0, 1.0)
 
 
 # Random edge sampling

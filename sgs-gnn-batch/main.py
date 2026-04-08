@@ -1,25 +1,35 @@
 from parser import parse_args
 from utils import *
-from model import * 
+import model as github_model
+import model_sparse_backward as sparse_backward_model
+import torch.nn as nn
 from torch_geometric.utils import to_scipy_sparse_matrix
 import scipy.sparse as sp
 import os 
 from datasets import *  
-from training import train
 from evaluate import evaluate,ensemble_evaluate 
+from training import train
 import time
 from torch_geometric.loader import ClusterData, ClusterLoader
 import pandas as pd 
-from DeviceDir import get_directory
+from Notebooks.DeviceDir import get_directory
+
+
+def get_model_module(args):
+    if getattr(args, "implementation", "github") == "sparse_backward":
+        return sparse_backward_model
+    return github_model
 
  
 if __name__=='__main__':
     args,_ = parse_args()
     fix_seeds(args.seed)
     DIR, RESULTS_DIR = get_directory()
+    model_module = get_model_module(args)
 
     #print(DIR)
     print(args.dataset)
+    print(f"[implementation] {args.implementation}")
 
     dataset, data = get_dataset(args, args.dataset)
     # print_stats(dataset,data)
@@ -96,19 +106,27 @@ if __name__=='__main__':
         #model = GNNModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate).to(device)
 
         if GNNConv == "GCN":    
-            model = GNNModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
+            model = model_module.GNNModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
             optimizer_gnn = torch.optim.Adam([param for name, param in model.named_parameters() if 'gcn' in name], lr=args.lr)            
         elif GNNConv == "GIN":    
-            model = GINModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
+            model = model_module.GINModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
             optimizer_gnn = torch.optim.Adam([param for name, param in model.named_parameters() if 'GIN' in name], lr=args.lr)
         elif GNNConv == "GAT":
-            model = GATModel(in_channels=data.x.shape[1], hidden_dim=args.nhid,  num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
+            model = model_module.GATModel(in_channels=data.x.shape[1], hidden_dim=args.nhid,  num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
             optimizer_gnn = torch.optim.Adam([param for name, param in model.named_parameters() if 'GAT' in name], lr=args.lr)            
         elif GNNConv == "Cheb":
-            model = ChebModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
+            model = model_module.ChebModel(in_channels=data.x.shape[1], hidden_dim=args.nhid, num_classes=data.num_classes,dropout_prob=args.drop_rate, edge_mlp_type=args.edge_mlp_type).to(device)
             optimizer_gnn = torch.optim.Adam([param for name, param in model.named_parameters() if 'gcn' in name], lr=args.lr)
         else:
             raise NotImplemented
+        
+        if args.log:
+            print(model)
+
+        gpu_profiler = GpuMemoryProfiler(enabled=args.gpu_profile, device=device)
+        if gpu_profiler.enabled:
+            model.gpu_profiler = gpu_profiler
+            model.edge_prob_mlp.gpu_profiler = gpu_profiler
         
         #optimizer_gnn = torch.optim.Adam([param for name, param in model.named_parameters()], lr=args.lr)
         optimizer_edge_prob = torch.optim.Adam([param for name, param in model.named_parameters() if 'edge_prob_mlp' in name], lr=args.lr)    
@@ -131,9 +149,18 @@ if __name__=='__main__':
         num_iteration = NUM_EPOCHS
 
         # Training over epochs
+        peak_memory_bytes = 0
+        if (args.stats or args.gpu_profile) and torch.cuda.is_available() and device.type == "cuda":
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats(device)
+
         for epoch in range(NUM_EPOCHS):
             # Alternate training of GNN and edge probability model based on frequency
             start = time.time()
+            if (args.stats or args.gpu_profile) and torch.cuda.is_available() and device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device)
+            if gpu_profiler.enabled:
+                gpu_profiler.start_epoch(epoch)
             loss, current_temp, c_update, t_update = train(
                 args,
                 epoch,
@@ -149,6 +176,45 @@ if __name__=='__main__':
             )
             
             EpochTimes.append(time.time()-start)
+            if args.stats and torch.cuda.is_available() and device.type == "cuda":
+                peak_memory_bytes = max(peak_memory_bytes, torch.cuda.max_memory_allocated(device))
+            if gpu_profiler.enabled:
+                epoch_peak_bytes = 0
+                total_bytes = 0
+                if torch.cuda.is_available() and device.type == "cuda":
+                    epoch_peak_bytes = torch.cuda.max_memory_allocated(device)
+                    total_bytes = torch.cuda.get_device_properties(device).total_memory
+                stats = gpu_profiler.summarize_epoch(epoch)
+                def _fmt_seg(name):
+                    seg = stats.get(name)
+                    if not seg:
+                        return f"{name}=n/a"
+                    peak_pct = (seg["max_peak_inc_bytes"] / epoch_peak_bytes * 100.0) if epoch_peak_bytes else 0.0
+                    total_pct = (seg["max_peak_inc_bytes"] / total_bytes * 100.0) if total_bytes else 0.0
+                    return (
+                        f"{name}: peak_inc_mb={seg['max_peak_inc_mb']:.2f} "
+                        f"({peak_pct:.2f}% of epoch_peak, {total_pct:.2f}% of device) "
+                        f"alloc_after_mb={seg['max_alloc_after_mb']:.2f} "
+                        f"calls={seg['calls']}"
+                    )
+                epoch_peak_mb = epoch_peak_bytes / (1024 ** 2) if epoch_peak_bytes else 0.0
+                print(
+                    "[gpu-profile] "
+                    f"epoch={epoch} peak_epoch_mb={epoch_peak_mb:.2f} "
+                    + " | ".join(
+                        [
+                            _fmt_seg("edge_mlp_pre"),
+                            _fmt_seg("edge_score"),
+                            _fmt_seg("gnn_forward"),
+                            _fmt_seg("backward"),
+                        ]
+                    )
+                )
+                if torch.cuda.is_available() and device.type == "cuda":
+                    alloc = torch.cuda.memory_allocated(device) / (1024 ** 2)
+                    reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)
+                    print(f"[mem] allocated_mb={alloc:.1f} reserved_mb={reserved:.1f}")
+                gpu_profiler.end_epoch()
 
             c_updates+=c_update
             t_updates+=t_update
@@ -212,6 +278,22 @@ if __name__=='__main__':
         #best_train_f1, best_val_f1, best_test_f1 = evaluate(args, model, cluster_loader, device, q=sample_size, mode=mode)
         best_train_f1, best_val_f1, best_test_f1 = ensemble_evaluate(args, model, cluster_loader, device, q=sample_size, mode=mode,temperature=best_Temperture)
         print(f'Best Test F1 after loading saved model: {best_test_f1:.4f}')
+
+        if args.stats:
+            train_time_sec = float(np.sum(EpochTimes))
+            if torch.cuda.is_available() and device.type == "cuda":
+                peak_mem_mb = peak_memory_bytes / (1024 ** 2)
+                print(
+                    f"[stats] pipeline={args.pipeline} run={run} "
+                    f"train_time_sec={train_time_sec:.4f} peak_gpu_mem_mb={peak_mem_mb:.2f} "
+                    f"best_val_f1={best_val_f1:.4f} best_test_f1={best_test_f1:.4f}"
+                )
+            else:
+                print(
+                    f"[stats] pipeline={args.pipeline} run={run} "
+                    f"train_time_sec={train_time_sec:.4f} peak_gpu_mem_mb=NA "
+                    f"best_val_f1={best_val_f1:.4f} best_test_f1={best_test_f1:.4f}"
+                )
         
         best_test_f1s.append(best_test_f1)
         best_test_f1s_at_best_vals.append(test_at_best_val_f1)

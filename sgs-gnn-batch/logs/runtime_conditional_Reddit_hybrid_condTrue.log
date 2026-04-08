@@ -1,0 +1,22 @@
+Reddit
+Reddit()
+Data(x=[232965, 602], edge_index=[2, 114615892], y=[232965], train_mask=[232965], val_mask=[232965], test_mask=[232965])
+Using METIS with num_parts: 230 avg edges per partition: 500000 sample size: 100000
+METIS Partition time: 4.22266960144043
+Run: 0
+[hybrid] checkpoint=on
+Mean epoch time of run 7.8851
+Iteration:  20
+EdgeMLP updated 711/4600
+Best Test F1 throughout: 0.0000
+Loading best model for final evaluation at val: 0.0000
+Best Test F1 after loading saved model: 0.9076
+[stats] pipeline=hybrid run=0 train_time_sec=157.7025 peak_gpu_mem_mb=1307.61 best_val_f1=0.9094 best_test_f1=0.9076
+---------------Stats-----------
+Mean training epoch runtime: 7.8851
+Mean convergence number: 20.0000 +/- 0.0000, [20]
+EdgeMLP updated/Total GNN updates 711.0/4600.0
+Mean Std of Best Test we could do F1 Score: 0.0000 +/- 0.0000
+Mean Std of Test at best Val F1 Score: 0.0000 +/- 0.0000
+Mean Std of Loaded best Val model Test F1 Score: 0.9076 +/- 0.0000
+-------------------------------

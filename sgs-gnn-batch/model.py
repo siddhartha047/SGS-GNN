@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 from torch_geometric.nn import GCNConv, GATConv, GINConv, SAGEConv, ChebConv, GAT, GIN
 
 # Define the MLP for edge probability with dropout
@@ -12,16 +13,34 @@ class EdgeProbMLP(nn.Module):
         self.fc1 = nn.Linear(2 * hidden_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, 1)
 
-    def forward(self, node_features, edge_index, random_sampled_edge_index=None):
+    def forward(self, node_features, edge_index, random_sampled_edge_index=None, use_checkpoint=False):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("edge_mlp_pre")
+        if random_sampled_edge_index is None:
+            x = self.dropout(F.relu(self.fcdim(node_features[edge_index[0]])))
+            y = self.dropout(F.relu(self.fcdim(node_features[edge_index[1]])))
+        else:
+            x = self.dropout(F.relu(self.fcdim(node_features[random_sampled_edge_index[0]])))
+            y = self.dropout(F.relu(self.fcdim(node_features[random_sampled_edge_index[1]])))
+        if profiler is not None:
+            profiler.end("edge_mlp_pre")
+    
+        def _edge_score(x_in, y_in):
+            edge_features = torch.cat([x_in * y_in, x_in - y_in], dim=1) # x*y|x-y
+            out = F.relu(self.fc1(edge_features))
+            # out = out + self.fc_residual(edge_features) #  # Add residual connection
+            out = self.dropout(out)
+            return torch.sigmoid(self.fc2(out))
 
-        x = self.dropout(F.relu(self.fcdim(node_features[edge_index[0]])))
-        y = self.dropout(F.relu(self.fcdim(node_features[edge_index[1]])))
-
-        edge_features = torch.cat([x*y,x-y], dim=1) #x*y|x-y
-        x = F.relu(self.fc1(edge_features))
-        # x = x + self.fc_residual(edge_features) #  # Add residual connection
-        x = self.dropout(x)
-        prob = torch.sigmoid(self.fc2(x))
+        if profiler is not None:
+            profiler.begin("edge_score")
+        if use_checkpoint and torch.is_grad_enabled() and x.requires_grad:
+            prob = checkpoint(_edge_score, x, y)
+        else:
+            prob = _edge_score(x, y)
+        if profiler is not None:
+            profiler.end("edge_score")
         # prob.requires_grad_(True)
         return prob
     
@@ -36,23 +55,36 @@ class EdgeProbSAGE(nn.Module):
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(hidden_dim, 1)
 
-    def forward(self, node_features, edge_index, random_sampled_edge_index=None):
-
+    def forward(self, node_features, edge_index, random_sampled_edge_index=None, use_checkpoint=False):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("edge_mlp_pre")
         if random_sampled_edge_index is not None:
             out = self.dropout(F.relu(self.gcn1(node_features, random_sampled_edge_index)))        
             # out = F.relu(self.gcn2(out, random_sampled_edge_index))
         else:
             out = self.dropout(F.relu(self.gcn1(node_features, edge_index)))        
             # out = F.relu(self.gcn2(out, edge_index))
+        if profiler is not None:
+            profiler.end("edge_mlp_pre")
 
-        x = out[edge_index[0]]
-        y = out[edge_index[1]]
-    
-        edge_features = torch.cat([x*y,x-y], dim=1) #x*y|x-y
-        x = F.relu(self.fc1(edge_features))
-        # x = x + self.fc_residual(edge_features) #  # Add residual connection
-        x = self.dropout(x)
-        prob = torch.sigmoid(self.fc2(x))
+        def _edge_score(out_in, edge_index_in):
+            x = out_in[edge_index_in[0]]
+            y = out_in[edge_index_in[1]]
+            edge_features = torch.cat([x * y, x - y], dim=1) # x*y|x-y
+            out = F.relu(self.fc1(edge_features))
+            # out = out + self.fc_residual(edge_features) #  # Add residual connection
+            out = self.dropout(out)
+            return torch.sigmoid(self.fc2(out))
+
+        if profiler is not None:
+            profiler.begin("edge_score")
+        if use_checkpoint and torch.is_grad_enabled() and out.requires_grad:
+            prob = checkpoint(_edge_score, out, edge_index)
+        else:
+            prob = _edge_score(out, edge_index)
+        if profiler is not None:
+            profiler.end("edge_score")
         # prob.requires_grad_(True)
         return prob
 
@@ -67,23 +99,39 @@ class EdgeProbGCN(nn.Module):
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(hidden_dim, 1)
 
-    def forward(self, node_features, edge_index, random_sampled_edge_index=None):
-
+    def forward(self, node_features, edge_index, random_sampled_edge_index=None, use_checkpoint=False):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("edge_mlp_pre")
         if random_sampled_edge_index is not None:
             out = self.dropout(F.relu(self.gcn1(node_features, random_sampled_edge_index)))        
             out = F.relu(self.gcn2(out, random_sampled_edge_index))
         else:
             out = self.dropout(F.relu(self.gcn1(node_features, edge_index)))        
             out = F.relu(self.gcn2(out, edge_index))
+        if profiler is not None:
+            profiler.end("edge_mlp_pre")
         
-        x = out[edge_index[0]]
-        y = out[edge_index[1]]
-        
-        edge_features = torch.cat([x*y,x-y], dim=1) #x*y|x-y
-        x = F.relu(self.fc1(edge_features))
-        # x = x + self.fc_residual(edge_features) #  # Add residual connection
-        x = self.dropout(x)
-        prob = torch.sigmoid(self.fc2(x))
+        def _edge_score(out_in, edge_index_in):
+            # print("--")
+            # print("Computing edge scores for {} edges".format(edge_index_in.size(1)))
+
+            x = out_in[edge_index_in[0]]
+            y = out_in[edge_index_in[1]]
+            edge_features = torch.cat([x * y, x - y], dim=1) # x*y|x-y
+            out = F.relu(self.fc1(edge_features))
+            # out = out + self.fc_residual(edge_features) #  # Add residual connection
+            out = self.dropout(out)
+            return torch.sigmoid(self.fc2(out))
+
+        if profiler is not None:
+            profiler.begin("edge_score")
+        if use_checkpoint and torch.is_grad_enabled() and out.requires_grad:
+            prob = checkpoint(_edge_score, out, edge_index)
+        else:
+            prob = _edge_score(out, edge_index)
+        if profiler is not None:
+            profiler.end("edge_score")
         # prob.requires_grad_(True)
         return prob
 
@@ -108,9 +156,14 @@ class GNNModel(nn.Module):
         self.gcn2 = GCNConv(hidden_dim, num_classes)
 
     def forward(self, data, edge_index, edge_weight=None):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("gnn_forward")
         x = F.relu(self.gcn1(data.x, edge_index, edge_weight))
         x = self.dropout(x)
         out = self.gcn2(x, edge_index, edge_weight)
+        if profiler is not None:
+            profiler.end("gnn_forward")
         return out
 
 
@@ -127,7 +180,12 @@ class GINModel(torch.nn.Module):
                     
         
     def forward(self, data, edge_index, edge_weight=None):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("gnn_forward")
         x = self.GIN(data.x, edge_index, edge_weight=edge_weight)
+        if profiler is not None:
+            profiler.end("gnn_forward")
         return x
 
 
@@ -144,7 +202,12 @@ class GATModel(torch.nn.Module):
                         act = 'relu')
         
     def forward(self, data, edge_index, edge_weight=None):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("gnn_forward")
         x = self.GAT(data.x, edge_index, edge_weight=edge_weight)        
+        if profiler is not None:
+            profiler.end("gnn_forward")
         return x
 
 
@@ -159,7 +222,12 @@ class ChebModel(nn.Module):
         self.gcn2 = ChebConv(hidden_dim, num_classes, K=1, normalization='sym')
 
     def forward(self, data, edge_index, edge_weight=None):
+        profiler = getattr(self, "gpu_profiler", None)
+        if profiler is not None:
+            profiler.begin("gnn_forward")
         x = F.relu(self.gcn1(data.x, edge_index, edge_weight))
         x = self.dropout(x)
         out = self.gcn2(x, edge_index, edge_weight)
+        if profiler is not None:
+            profiler.end("gnn_forward")
         return out

@@ -1,0 +1,9 @@
+runtime_conditional_summary pipeline=hybrid runs=1 epochs=20 2026-02-08T20:32:41-05:00
+[Tolokers cond=True pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=3.4619 peak_gpu_mem_mb=944.77 best_val_f1=0.7819 best_test_f1=0.7816
+[Tolokers cond=False pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=3.9305 peak_gpu_mem_mb=937.63 best_val_f1=0.7819 best_test_f1=0.7816
+[genius cond=True pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=8.6676 peak_gpu_mem_mb=1741.43 best_val_f1=0.7991 best_test_f1=0.7999
+[genius cond=False pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=8.8487 peak_gpu_mem_mb=1677.09 best_val_f1=0.7992 best_test_f1=0.7999
+[arxiv-year cond=True pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=8.9004 peak_gpu_mem_mb=1502.14 best_val_f1=0.3479 best_test_f1=0.3482
+[arxiv-year cond=False pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=9.6942 peak_gpu_mem_mb=1478.28 best_val_f1=0.3361 best_test_f1=0.3388
+[Reddit cond=True pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=157.7025 peak_gpu_mem_mb=1307.61 best_val_f1=0.9094 best_test_f1=0.9076
+[Reddit cond=False pipeline=hybrid] [stats] pipeline=hybrid run=0 train_time_sec=174.4039 peak_gpu_mem_mb=1302.08 best_val_f1=0.9113 best_test_f1=0.9093

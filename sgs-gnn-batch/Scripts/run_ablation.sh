@@ -4,6 +4,8 @@
 
 echo "Current date and time: $(date)"
 
+PIPELINE="${PIPELINE:-hybrid}"
+
 # for mode in "learned"; do
 #     echo $mode
 #     for dataset in "SmallCora" "Cora" "johnshopkins55"; do
@@ -56,14 +58,15 @@ echo "Current date and time: $(date)"
 
 for mode in "learned"; do
     echo $mode
-    for dataset in "SmallCora"; do
+    #for dataset in "SmallCora"; do
+    for dataset in "Cora" "johnshopkins55"; do
     #for dataset in "SmallCora" "Cora" "CiteSeer" "johnshopkins55" "Squirrel" "Roman-empire"; do
         echo ---------$dataset--------------
         for GNN in "GCN"; do
             echo ------GNN----$GNN------
-            for edgeGNN in "GCN"; do
+            for edgeGNN in "MLP" "GSAGE"; do
                 echo ----EdgeGNN---$edgeGNN------
-                python main.py --dataset $dataset --mode learned --runs 1 --epochs 1 --save_csv True --edge_mlp_type $edgeGNN --GNN $GNN --log False --sparse_edge_mlp True --conditional False --reg1 True --reg2 True
+                python main.py --dataset $dataset --mode learned --runs 3 --epochs 150 --save_csv True --edge_mlp_type $edgeGNN --GNN $GNN --log False --sparse_edge_mlp True --conditional False --reg1 True --reg2 True --pipeline "${PIPELINE}"
                 
             done
         done

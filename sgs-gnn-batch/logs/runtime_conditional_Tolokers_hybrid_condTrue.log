@@ -1,0 +1,20 @@
+Tolokers
+Using METIS with num_parts: 3 avg edges per partition: 500000 sample size: 100000
+METIS Partition time: 0.009379148483276367
+Run: 0
+[hybrid] checkpoint=on
+Mean epoch time of run 0.1731
+Iteration:  20
+EdgeMLP updated 13/60
+Best Test F1 throughout: 0.0000
+Loading best model for final evaluation at val: 0.0000
+Best Test F1 after loading saved model: 0.7816
+[stats] pipeline=hybrid run=0 train_time_sec=3.4619 peak_gpu_mem_mb=944.77 best_val_f1=0.7819 best_test_f1=0.7816
+---------------Stats-----------
+Mean training epoch runtime: 0.1731
+Mean convergence number: 20.0000 +/- 0.0000, [20]
+EdgeMLP updated/Total GNN updates 13.0/60.0
+Mean Std of Best Test we could do F1 Score: 0.0000 +/- 0.0000
+Mean Std of Test at best Val F1 Score: 0.0000 +/- 0.0000
+Mean Std of Loaded best Val model Test F1 Score: 0.7816 +/- 0.0000
+-------------------------------
